@@ -121,7 +121,7 @@ Some bad sampled results are shown:
 <img src="./assets/result3.png" width = "600"/>
 <img src="./assets/result4.png" width = "600"/>
 
-Also, here provides a link to the output video [[click](./videos/test_video1.mp4)].
+Also, here provides a link to a test video [[click](./videos/test_video1.mp4)].
 
 
 ## **5.Discussions**
