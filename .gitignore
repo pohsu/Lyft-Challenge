@@ -1,1 +1,14 @@
+# dir #
 data/
+load_models/
+save_models/
+backup/
+tmp/
+submission/
+slim/
+__pycache__/
+
+# Log #
+*.ipynb_checkpoints
+
+# cache #

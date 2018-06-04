@@ -10,42 +10,37 @@ import re
 from imgaug import augmenters as iaa
 
 def build_gen(data_folder):
-  def get_batches_fn(batch_size):
-    image_paths = glob(os.path.join(data_folder, 'CameraRGB', '*.png'))
-    label_paths = {os.path.basename(path): path for path in glob(os.path.join(data_folder, 'CameraSeg', '*.png'))}
-    random.shuffle(image_paths)
-    for batch_i in range(0, len(image_paths), batch_size):
-      images = []
-      labels = []
-      for image_file in image_paths[batch_i:batch_i+batch_size]:
-        label_file = label_paths[os.path.basename(image_file)]
-        image = scipy.misc.imread(image_file)
-        label = scipy.misc.imread(label_file)
-        #[102:518]
-        images.append(image)
-        labels.append(label)
-      yield np.array(images), np.array(labels)
-  return get_batches_fn
+    """
+    Generate function to create batches of training data
+    :param data_folder: Path to folder that contains all the datasets
+    :return: data_generator
+    """
+    def get_batches_fn(batch_size):
+        image_paths = glob(os.path.join(data_folder, 'CameraRGB', '*.png'))
+        label_paths = {os.path.basename(path): path for path in glob(os.path.join(data_folder, 'CameraSeg', '*.png'))}
+        random.shuffle(image_paths)
+        for batch_i in range(0, len(image_paths), batch_size):
+            images = []
+            labels = []
+            for image_file in image_paths[batch_i:batch_i+batch_size]:
+                label_file = label_paths[os.path.basename(image_file)]
+                image = scipy.misc.imread(image_file)
+                label = scipy.misc.imread(label_file)
+                images.append(image)
+                labels.append(label)
 
-def build_gen_val(data_folder):
-  def get_batches_fn(batch_size):
-    image_paths = glob(os.path.join(data_folder, 'CameraRGB', '*.png'))
-    label_paths = {os.path.basename(path): path for path in glob(os.path.join(data_folder, 'CameraSeg', '*.png'))}
-    random.shuffle(image_paths)
-    for batch_i in range(0, len(image_paths), batch_size):
-      images = []
-      labels = []
-      for image_file in image_paths[batch_i:batch_i+batch_size]:
-        label_file = label_paths[os.path.basename(image_file)]
-        image = scipy.misc.imread(image_file)
-        label = scipy.misc.imread(label_file)
-        #[102:518]
-        images.append(image)
-        labels.append(label)
-      yield np.array(images), np.array(labels)
-  return get_batches_fn
+            yield np.array(images), np.array(labels)
+
+    return get_batches_fn
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes, weights):
+    """
+    Setup optimizer with weighted cross entropy loss
+    :param nn_last_layer: tf tensors, NN last layer
+    :param correct_label: tf placholder, correct lables
+    :param weights: constant
+    :return: tf tensors
+    """
     class_weights = tf.constant(weights,dtype=tf.float32)
     logits = tf.reshape(nn_last_layer, (-1, num_classes),name = 'logits')
     correct_label = tf.reshape(correct_label, (-1, num_classes))
@@ -62,86 +57,117 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes, weights):
     return logits, train_op, total_loss
 
 def build_graph(sess, model_path, correct_label, learning_rate, num_classes, L2, weights):
-  saver = tf.train.import_meta_graph(model_path+'.meta')
-  saver.restore(sess, model_path)
-  graph = tf.get_default_graph()
-  input_image = graph.get_tensor_by_name('input_image:0')
-  C4 = graph.get_tensor_by_name('resnet_v2_101/block3/unit_11/bottleneck_v2/add:0') # 32,50,1024
-  C3 = graph.get_tensor_by_name('resnet_v2_101/block2/unit_3/bottleneck_v2/add:0') # 64, 100, 512
-  C2 = graph.get_tensor_by_name('resnet_v2_101/block1/unit_2/bottleneck_v2/add:0') # 128, 200, 256
-  C4 = tf.nn.relu(C4)
-  C3 = tf.nn.relu(C3)
-  C2 = tf.nn.relu(C2)
+    """
+    Build graph for training
+    :param sess: tf session
+    :param model_path: backbone model path
+    :param correct_label: tf placeholder, correct labels
+    :param learning_rate: constant
+    :param num_classes: constant
+    :param L2: tf placeholder, for regularization
+    :param weights: constant
+    :return: tf tensors
+    """
+    saver = tf.train.import_meta_graph(model_path+'.meta')
+    saver.restore(sess, model_path)
+    graph = tf.get_default_graph()
+    input_image = graph.get_tensor_by_name('input_image:0')
+    C4 = graph.get_tensor_by_name('resnet_v2_101/block3/unit_11/bottleneck_v2/add:0') # 32,50,1024
+    C3 = graph.get_tensor_by_name('resnet_v2_101/block2/unit_3/bottleneck_v2/add:0') # 64, 100, 512
+    C2 = graph.get_tensor_by_name('resnet_v2_101/block1/unit_2/bottleneck_v2/add:0') # 128, 200, 256
+    C4 = tf.nn.relu(C4)
+    C3 = tf.nn.relu(C3)
+    C2 = tf.nn.relu(C2)
 
-  FCN_16s = tf.layers.conv2d(C4, num_classes, (1,1),
+    FCN_16s = tf.layers.conv2d(C4, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_16s_conv2d')
-  FCN_16s = tf.layers.conv2d_transpose(FCN_16s, num_classes, 4, 2, padding = 'same',
+    FCN_16s = tf.layers.conv2d_transpose(FCN_16s, num_classes, 4, 2, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_16s_conv2d_transpose')
 
-  FCN_8s = tf.layers.conv2d(C3, num_classes, (1,1),
+    FCN_8s = tf.layers.conv2d(C3, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_8s_conv2d')
-  FCN_8s = tf.add(FCN_8s, FCN_16s, name = 'FCN_8s_add')
+    FCN_8s = tf.add(FCN_8s, FCN_16s, name = 'FCN_8s_add')
 
-  FCN_8s = tf.layers.conv2d_transpose(FCN_8s, num_classes, 4, 2, padding = 'same',
+    FCN_8s = tf.layers.conv2d_transpose(FCN_8s, num_classes, 4, 2, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_8s_conv2d_transpose')
 
-  FCN_4s = tf.layers.conv2d(C2, num_classes, (1,1),
+    FCN_4s = tf.layers.conv2d(C2, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_4s_conv2d')
-  FCN_4s = tf.add(FCN_4s, FCN_8s, name = 'FCN_4s_add')
+    FCN_4s = tf.add(FCN_4s, FCN_8s, name = 'FCN_4s_add')
 
-  output = tf.layers.conv2d_transpose(FCN_4s, num_classes, 8, 4, padding = 'same',
+    output = tf.layers.conv2d_transpose(FCN_4s, num_classes, 8, 4, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2), name = 'FCN_output')
-  nn_last_layer = tf.identity(output, name="nn_last_layer")
+    nn_last_layer = tf.identity(output, name="nn_last_layer")
 
-  logits, train_op, total_losses = optimize(nn_last_layer, correct_label, learning_rate, num_classes, weights)
-  return (train_op, logits, total_losses, nn_last_layer, input_image, correct_label, learning_rate, L2)
+    logits, train_op, total_losses = optimize(nn_last_layer, correct_label, learning_rate, num_classes, weights)
+    return (train_op, logits, total_losses, nn_last_layer, input_image, correct_label, learning_rate, L2)
 
 def build_graph_inference(sess, model_path, num_classes):
-  L2 = 1e-4
-  saver = tf.train.import_meta_graph(model_path+'.meta')
-  graph = tf.get_default_graph()
-  C4 = graph.get_tensor_by_name('resnet_v2_101/block3/unit_11/bottleneck_v2/add:0') # 32,50,1024
-  C3 = graph.get_tensor_by_name('resnet_v2_101/block2/unit_3/bottleneck_v2/add:0') # 64, 100, 512
-  C2 = graph.get_tensor_by_name('resnet_v2_101/block1/unit_2/bottleneck_v2/add:0') # 128, 200, 256
-  C4 = tf.nn.relu(C4)
-  C3 = tf.nn.relu(C3)
-  C2 = tf.nn.relu(C2)
+    """
+    Build graph for inferecne
+    :param sess: tf session
+    :param model_path: backbone model path
+    :param num_classes: constant
+    :return: tf tensors
+    """
+    # this has no impact as the graph is for inference
+    L2 = 1e-4
+    saver = tf.train.import_meta_graph(model_path+'.meta')
+    graph = tf.get_default_graph()
+    C4 = graph.get_tensor_by_name('resnet_v2_101/block3/unit_11/bottleneck_v2/add:0') # 32,50,1024
+    C3 = graph.get_tensor_by_name('resnet_v2_101/block2/unit_3/bottleneck_v2/add:0') # 64, 100, 512
+    C2 = graph.get_tensor_by_name('resnet_v2_101/block1/unit_2/bottleneck_v2/add:0') # 128, 200, 256
+    C4 = tf.nn.relu(C4)
+    C3 = tf.nn.relu(C3)
+    C2 = tf.nn.relu(C2)
 
-  FCN_16s = tf.layers.conv2d(C4, num_classes, (1,1),
+    FCN_16s = tf.layers.conv2d(C4, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_16s_conv2d')
-  FCN_16s = tf.layers.conv2d_transpose(FCN_16s, num_classes, 4, 2, padding = 'same',
+    FCN_16s = tf.layers.conv2d_transpose(FCN_16s, num_classes, 4, 2, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_16s_conv2d_transpose')
 
-  FCN_8s = tf.layers.conv2d(C3, num_classes, (1,1),
+    FCN_8s = tf.layers.conv2d(C3, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_8s_conv2d')
-  FCN_8s = tf.add(FCN_8s, FCN_16s, name = 'FCN_8s_add')
+    FCN_8s = tf.add(FCN_8s, FCN_16s, name = 'FCN_8s_add')
 
-  FCN_8s = tf.layers.conv2d_transpose(FCN_8s, num_classes, 4, 2, padding = 'same',
+    FCN_8s = tf.layers.conv2d_transpose(FCN_8s, num_classes, 4, 2, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_8s_conv2d_transpose')
 
-  FCN_4s = tf.layers.conv2d(C2, num_classes, (1,1),
+    FCN_4s = tf.layers.conv2d(C2, num_classes, (1,1),
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2),
                           name = 'FCN_4s_conv2d')
-  FCN_4s = tf.add(FCN_4s, FCN_8s, name = 'FCN_4s_add')
+    FCN_4s = tf.add(FCN_4s, FCN_8s, name = 'FCN_4s_add')
 
-  output = tf.layers.conv2d_transpose(FCN_4s, num_classes, 8, 4, padding = 'same',
+    output = tf.layers.conv2d_transpose(FCN_4s, num_classes, 8, 4, padding = 'same',
                           kernel_regularizer = tf.contrib.layers.l2_regularizer(L2), name = 'FCN_output')
-  nn_last_layer = tf.identity(output, name="nn_last_layer")
+    nn_last_layer = tf.identity(output, name="nn_last_layer")
 
-  softmax = tf.nn.softmax(nn_last_layer, name = 'softmax')
+    softmax = tf.nn.softmax(nn_last_layer, name = 'softmax')
 
 def train_nn_valid(sess, epochs, batch_size, lrn_rate, tensors, l2_rate, gen_paths, SAVE_DIR_TEST):
+    """
+    Training and validation
+    :param sess: tf session
+    :param epochs: constant, number of epochs
+    :param batch_size: constant
+    :param lrn_rate: constant
+    :param tensors: tf tensors, from graph builder
+    :param l2_rate: constant
+    :param gen_paths: tuple, (train_path, valid_path)
+    :param SAVE_DIR_TEST: model saving and logging dir
+    :return:
+    """
     train_gen = build_gen(gen_paths[0])
-    valid_gen = build_gen_val(gen_paths[1])
+    valid_gen = build_gen(gen_paths[1])
     train_op, logits, total_loss, nn_last_layer, input_image, correct_label, learning_rate, L2 = tensors
     graph = tf.get_default_graph()
     is_training = graph.get_tensor_by_name('is_training:0')
@@ -230,12 +256,15 @@ def train_nn_valid(sess, epochs, batch_size, lrn_rate, tensors, l2_rate, gen_pat
             .format(epoch+1, lrn_rate, train_loss, train_P, val_P, train_R, val_R, train_accuracy, val_accuracy), file = f)
 
 def load_train_tensors(graph):
-  input_image = graph.get_tensor_by_name('input_image:0')
-  correct_label = graph.get_tensor_by_name('correct_label:0')
-  learning_rate = graph.get_tensor_by_name('learning_rate:0')
-  train_op = graph.get_operation_by_name("train_op")
-  logits = graph.get_tensor_by_name('logits:0')
-  total_loss = graph.get_tensor_by_name('cross_entropy_loss:0')
-  nn_last_layer = graph.get_tensor_by_name('nn_last_layer:0')
-  L2 = graph.get_tensor_by_name('L2:0')
-  return (train_op, logits, total_loss, nn_last_layer, input_image, correct_label, learning_rate, L2)
+    """
+    For retraining
+    """
+    input_image = graph.get_tensor_by_name('input_image:0')
+    correct_label = graph.get_tensor_by_name('correct_label:0')
+    learning_rate = graph.get_tensor_by_name('learning_rate:0')
+    train_op = graph.get_operation_by_name("train_op")
+    logits = graph.get_tensor_by_name('logits:0')
+    total_loss = graph.get_tensor_by_name('cross_entropy_loss:0')
+    nn_last_layer = graph.get_tensor_by_name('nn_last_layer:0')
+    L2 = graph.get_tensor_by_name('L2:0')
+    return (train_op, logits, total_loss, nn_last_layer, input_image, correct_label, learning_rate, L2)
