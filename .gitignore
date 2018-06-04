@@ -7,9 +7,9 @@ tmp/
 submission/
 slim/
 __pycache__/
-grader/
+Grader/
 
 # Log #
-*.ipynb_checkpoints
+.ipynb_checkpoints/
 
 # cache #
