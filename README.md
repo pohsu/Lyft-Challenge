@@ -1,6 +1,9 @@
 # **Udacity \- Lyft Challenge**
 
-github link: https://github.com/pohsu/Lyft-Challenge
+Final prediction on the test set:
+
+![Alt Text](./assets/test.gif)
+
 
 ## **1.Semantic Segmentation**
 
@@ -48,8 +51,8 @@ The story of the architecture selection was originally derived from seeing the a
 
 The code can be found in [link](https://github.com/pohsu/Lyft-Challenge):
 
-### Data Collection and Pre-processing
-The original dataset given by Udacity contains only 1000 images, which may not be sufficient to prevent overfitting. So in the beginning, I performed augmentation on the image by randomly adjust the hue/saturation (mainly affecting vehicle colors), contrast, and brightness. However, the results are not very satisfactory. Since the dataset is artificial, so we can leverage the idea of generating more data through CARLA simulators. However, there is an issue of collecting video stream images as the they are highly correlated. Thus, I made up a strategy of collecting only few images for each episode of the simulation. This really helps to break the correlation and helps the network to generalize better. But it is also important to note that the same vehicle may appear in different sizes (far/close), so we need to balance both by adjusting the recording frames per seconds. I ended up collecting 22k samples (with an additional collection of valid set of ~2k) and did not use the augmentation as the training became relatively heavy.
+### Data Collection, Pre-processing, and Augmentation
+The original dataset given by Udacity contains only 1000 images, which may not be sufficient to prevent overfitting. So in the beginning, I performed augmentation [imgaug](https://github.com/aleju/imgaug) on the image by randomly adjust the hue/saturation (mainly affecting vehicle colors), contrast, and brightness. However, the results are not very satisfactory. Since the dataset is artificial, so we can leverage the idea of generating more data through CARLA simulators. It should also be noticed that there is an issue of collecting video stream images as they are highly correlated. Thus, I made up a strategy of collecting only few images for each episode of the simulation. This really helps to break the correlation and helps the network to generalize better. But it is also important to note that the same vehicle may appear in different sizes (far/close), so we need to balance both by adjusting the recording frames per seconds. I ended up collecting 22k samples (with an additional collection of valid set of ~2k) and did not use the augmentation as the training became relatively heavy.
 
 Since the unprocessed label images contain 12 classes and we really do not what to fit the vehicle hood, so I manipulated the labels and cropped the images to 416x800 (Y axis - 102:518). This brings some advantages of increasing training/inference speed and avoid fitting the vehicle hood. The sampled image is shown:
 
@@ -121,7 +124,7 @@ Some bad sampled results are shown:
 <img src="./assets/result3.png" width = "600"/>
 <img src="./assets/result4.png" width = "600"/>
 
-Also, here provides a link to a test video [[click](./videos/test_video1.mp4)].
+Also, here provides a link to the video of the test set [[click](./videos/test_video1.mp4)].
 
 
 ## **5.Discussions**
